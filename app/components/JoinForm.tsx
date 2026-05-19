@@ -1,21 +1,25 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { joinWaitlist, type JoinResult } from "../actions";
+import { useEffect, useState } from "react";
+import type { JoinResult } from "@/lib/types";
 import type { PainSegment } from "@/lib/supabase";
 
-const OPTIONS: { value: PainSegment; label: string; tone: "coral" | "sky" | "violet"; emoji: string }[] = [
+const OPTIONS: {
+  value: PainSegment;
+  label: string;
+  tone: "coral" | "sky" | "violet";
+  emoji: string;
+}[] = [
   { value: "payments",      label: "Get paid on time",        tone: "coral",  emoji: "💸" },
   { value: "fragmentation", label: "One desk, not seven tabs", tone: "sky",    emoji: "🗂️" },
   { value: "mental_load",   label: "Clock out for real",      tone: "violet", emoji: "🌙" },
 ];
 
 export function JoinForm() {
-  const [state, formAction, pending] = useActionState<
-    JoinResult | null,
-    FormData
-  >(joinWaitlist, null);
   const [segment, setSegment] = useState<PainSegment | "">("");
+  const [email, setEmail] = useState("");
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<JoinResult | null>(null);
 
   useEffect(() => {
     function handler(e: Event) {
@@ -26,8 +30,29 @@ export function JoinForm() {
     return () => window.removeEventListener("flowdesk:vote", handler);
   }, []);
 
-  if (state?.ok) {
-    const tone = OPTIONS.find((o) => o.value === state.segment)?.tone ?? "coral";
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (pending) return;
+    setPending(true);
+    setResult(null);
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, segment }),
+      });
+      const data = (await res.json()) as JoinResult;
+      setResult(data);
+    } catch (err) {
+      console.error(err);
+      setResult({ ok: false, error: "Network error. Try again." });
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (result?.ok) {
+    const tone = OPTIONS.find((o) => o.value === result.segment)?.tone ?? "coral";
     return (
       <div className={`soft-card ${tone === "coral" ? "tint-coral" : tone === "sky" ? "tint-sky" : "tint-violet"} text-center py-14`}>
         <div className="text-6xl mb-5">🎉</div>
@@ -35,17 +60,15 @@ export function JoinForm() {
           Vote recorded.
         </h3>
         <p className="mt-4 text-ink-soft text-lg max-w-md mx-auto">
-          We'll send <span className="serif-italic">one</span> email when the winning fix ships. Nothing before.
+          We'll send <span className="serif-italic">one</span> email when the
+          winning fix ships. Nothing before.
         </p>
       </div>
     );
   }
 
   return (
-    <form action={formAction} className="space-y-7">
-      <input type="hidden" name="segment" value={segment} />
-
-      {/* Step 1: emoji pickers */}
+    <form onSubmit={onSubmit} className="space-y-7">
       <div>
         <div className="text-xs uppercase tracking-widest text-ink-soft mb-4 font-semibold">
           1 · Pick your problem
@@ -53,12 +76,6 @@ export function JoinForm() {
         <div className="grid grid-cols-3 gap-3">
           {OPTIONS.map((opt) => {
             const active = segment === opt.value;
-            const ring =
-              opt.tone === "coral"
-                ? "ring-coral"
-                : opt.tone === "sky"
-                  ? "ring-sky"
-                  : "ring-violet";
             const tint =
               opt.tone === "coral"
                 ? "tint-coral"
@@ -87,9 +104,11 @@ export function JoinForm() {
         </div>
       </div>
 
-      {/* Step 2: email */}
       <div>
-        <label htmlFor="email" className="text-xs uppercase tracking-widest text-ink-soft mb-3 block font-semibold">
+        <label
+          htmlFor="email"
+          className="text-xs uppercase tracking-widest text-ink-soft mb-3 block font-semibold"
+        >
           2 · Your email
         </label>
         <input
@@ -100,18 +119,24 @@ export function JoinForm() {
           inputMode="email"
           autoComplete="email"
           placeholder="you@studio.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           className="field"
         />
       </div>
 
-      {state?.ok === false && (
-        <div className="bg-coral-soft text-coral rounded-xl px-4 py-3 text-sm">
-          {state.error}
+      {result?.ok === false && (
+        <div className="bg-coral-soft text-coral-deep rounded-xl px-4 py-3 text-sm font-medium">
+          {result.error}
         </div>
       )}
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-4 pt-2">
-        <button type="submit" disabled={pending} className="btn btn-lime !text-base !py-4 !px-7 disabled:opacity-50">
+        <button
+          type="submit"
+          disabled={pending}
+          className="btn btn-lime !text-base !py-4 !px-7 disabled:opacity-50"
+        >
           {pending ? "Sending…" : "Send my vote"}
           <span aria-hidden>→</span>
         </button>
